@@ -1,0 +1,5 @@
+dc_id,dc_name,city,state,latitude,longitude,receiving_capacity_pallets,storage_capacity_pallets,handling_cost_per_pallet,holding_cost_per_pallet,initial_inventory_pallets
+DC_LA,Los Angeles Distribution Center,Los Angeles,CA,34.0522,-118.2437,3200,5000,18.0,4.0,500
+DC_DAL,Dallas Distribution Center,Dallas,TX,32.7767,-96.797,3000,4800,16.0,3.5,450
+DC_CHI,Chicago Distribution Center,Chicago,IL,41.8781,-87.6298,3000,4700,17.0,3.75,400
+DC_NY,New York Distribution Center,New York,NY,40.7128,-74.006,3300,5200,20.0,4.5,550

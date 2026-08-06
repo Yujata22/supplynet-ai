@@ -1,0 +1,9 @@
+region_id,region_name,latitude,longitude,base_weekly_demand,shortage_penalty_per_pallet
+REG_PNW,Pacific Northwest,47.5,-122.0,950,500.0
+REG_WEST,West,34.5,-118.0,1450,550.0
+REG_SW,Southwest,33.5,-112.0,900,500.0
+REG_MW,Midwest,41.5,-88.0,1350,525.0
+REG_SOUTH,South,32.8,-97.0,1250,525.0
+REG_SE,Southeast,33.7,-84.4,1150,525.0
+REG_MA,Mid-Atlantic,39.0,-77.0,1050,550.0
+REG_NE,Northeast,42.0,-72.0,1400,600.0

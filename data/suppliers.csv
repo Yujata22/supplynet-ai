@@ -1,0 +1,26 @@
+supplier_id,supplier_name,city,state,region,latitude,longitude,weekly_capacity_pallets,minimum_commitment_pallets,reliability_score,is_active
+SUP_001,Supplier 001,Phoenix,AZ,Southwest,33.4484,-112.074,362,47,0.896,True
+SUP_002,Supplier 002,Phoenix,AZ,Southwest,33.4484,-112.074,629,11,0.937,False
+SUP_003,Supplier 003,Sacramento,CA,West,38.5816,-121.4944,461,29,0.926,False
+SUP_004,Supplier 004,Houston,TX,South,29.7604,-95.3698,629,53,0.889,True
+SUP_005,Supplier 005,Seattle,WA,West,47.6062,-122.3321,431,54,0.904,True
+SUP_006,Supplier 006,Detroit,MI,Midwest,42.3314,-83.0458,402,5,0.909,True
+SUP_007,Supplier 007,Columbus,OH,Midwest,39.9612,-82.9988,485,5,0.955,True
+SUP_008,Supplier 008,Nashville,TN,South,36.1627,-86.7816,390,35,0.898,True
+SUP_009,Supplier 009,Columbus,OH,Midwest,39.9612,-82.9988,645,24,0.952,True
+SUP_010,Supplier 010,Kansas City,MO,Midwest,39.0997,-94.5786,498,10,0.971,True
+SUP_011,Supplier 011,Nashville,TN,South,36.1627,-86.7816,492,58,0.943,True
+SUP_012,Supplier 012,Columbus,OH,Midwest,39.9612,-82.9988,531,26,0.947,True
+SUP_013,Supplier 013,Sacramento,CA,West,38.5816,-121.4944,437,31,0.881,True
+SUP_014,Supplier 014,Philadelphia,PA,East,39.9526,-75.1652,462,41,0.97,True
+SUP_015,Supplier 015,Kansas City,MO,Midwest,39.0997,-94.5786,366,51,0.901,True
+SUP_016,Supplier 016,Houston,TX,South,29.7604,-95.3698,640,91,0.901,True
+SUP_017,Supplier 017,Nashville,TN,South,36.1627,-86.7816,584,18,0.894,True
+SUP_018,Supplier 018,Philadelphia,PA,East,39.9526,-75.1652,625,33,0.957,True
+SUP_019,Supplier 019,Pittsburgh,PA,East,40.4406,-79.9959,554,46,0.889,True
+SUP_020,Supplier 020,Richmond,VA,East,37.5407,-77.436,602,11,0.958,True
+SUP_021,Supplier 021,Denver,CO,Mountain,39.7392,-104.9903,431,54,0.938,True
+SUP_022,Supplier 022,Boston,MA,Northeast,42.3601,-71.0589,589,67,0.893,True
+SUP_023,Supplier 023,Seattle,WA,West,47.6062,-122.3321,408,43,0.975,True
+SUP_024,Supplier 024,Detroit,MI,Midwest,42.3314,-83.0458,407,18,0.917,True
+SUP_025,Supplier 025,Minneapolis,MN,Midwest,44.9778,-93.265,606,22,0.926,True
