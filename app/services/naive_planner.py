@@ -13,36 +13,56 @@ from app.models.planning_result import (
 
 class NaivePlanner:
     """
-    Rule-based baseline planner.
+    Rule-based baseline supply-network planner.
 
     Strategy:
-    1. Assign each customer region to its cheapest available outbound DC.
-    2. Calculate how many pallets each DC needs.
-    3. For each DC, rank inbound lanes by nominal cost per pallet.
-    4. Allocate pallets from active suppliers until DC demand/capacity is met.
-    5. Round container bookings upward.
-    6. Calculate costs, shortages, fulfillment, and utilization.
+    1. Assign each customer region to its cheapest available DC.
+    2. Calculate required pallets at each DC.
+    3. Use initial DC inventory first.
+    4. Procure remaining demand using cheapest nominal inbound lanes.
+    5. Respect supplier and DC capacity.
+    6. Book whole containers.
+    7. Fulfill customer-region demand sequentially.
+    8. Calculate cost and service metrics.
 
-    This is intentionally NOT a globally optimal planner.
-    It serves as the baseline for comparison with OR-Tools.
+    This planner is intentionally heuristic and does not guarantee
+    a globally optimal solution.
     """
 
-    def __init__(self, network: NetworkData) -> None:
+    def __init__(
+        self,
+        network: NetworkData,
+    ) -> None:
         self.network = network
+
+        self.suppliers = {
+            supplier.supplier_id: supplier
+            for supplier in network.suppliers
+        }
+
+        self.distribution_centers = {
+            dc.dc_id: dc
+            for dc in network.distribution_centers
+        }
+
+        self.customer_regions = {
+            region.region_id: region
+            for region in network.customer_regions
+        }
 
     def _get_week_demand(
         self,
         week: int,
     ) -> dict[str, int]:
-        """Return demand by customer region for the requested week."""
+        """Return demand by region for the selected week."""
 
         demand_by_region: dict[str, int] = {}
 
         for record in self.network.demand:
             if record.week == week:
-                demand_by_region[record.region_id] = (
-                    record.demand_pallets
-                )
+                demand_by_region[
+                    record.region_id
+                ] = record.demand_pallets
 
         if not demand_by_region:
             raise ValueError(
@@ -51,7 +71,9 @@ class NaivePlanner:
 
         return demand_by_region
 
-    def _active_suppliers(self) -> dict:
+    def _active_suppliers(
+        self,
+    ) -> dict:
         """Return active suppliers keyed by supplier ID."""
 
         return {
@@ -60,8 +82,10 @@ class NaivePlanner:
             if supplier.is_active
         }
 
-    def _available_inbound_lanes(self) -> list:
-        """Return currently available supplier-to-DC lanes."""
+    def _available_inbound_lanes(
+        self,
+    ) -> list:
+        """Return available supplier-to-DC lanes."""
 
         return [
             lane
@@ -69,8 +93,10 @@ class NaivePlanner:
             if lane.is_available
         ]
 
-    def _available_outbound_lanes(self) -> list:
-        """Return currently available DC-to-region lanes."""
+    def _available_outbound_lanes(
+        self,
+    ) -> list:
+        """Return available DC-to-region lanes."""
 
         return [
             lane
@@ -82,28 +108,33 @@ class NaivePlanner:
         self,
         demand_by_region: dict[str, int],
     ) -> tuple[
-        list[OutboundAllocation],
+        dict[str, str],
         dict[str, int],
         dict[str, int],
     ]:
         """
-        Assign each customer region to its cheapest available DC.
+        Assign every region to its cheapest available outbound DC.
 
         Returns:
-        - outbound allocations
-        - required pallets by DC
-        - demand with no available outbound lane
+        - region_to_dc
+        - required_pallets_by_dc
+        - unavailable_region_demand
         """
 
-        outbound_allocations: list[OutboundAllocation] = []
+        region_to_dc: dict[str, str] = {}
 
         required_pallets_by_dc: dict[str, int] = defaultdict(int)
 
         unavailable_region_demand: dict[str, int] = {}
 
-        available_lanes = self._available_outbound_lanes()
+        available_lanes = (
+            self._available_outbound_lanes()
+        )
 
-        for region_id, demand_pallets in demand_by_region.items():
+        for (
+            region_id,
+            demand_pallets,
+        ) in demand_by_region.items():
             region_lanes = [
                 lane
                 for lane in available_lanes
@@ -114,33 +145,26 @@ class NaivePlanner:
                 unavailable_region_demand[
                     region_id
                 ] = demand_pallets
+
                 continue
 
             cheapest_lane = min(
                 region_lanes,
-                key=lambda lane: lane.cost_per_pallet,
+                key=lambda lane: (
+                    lane.cost_per_pallet
+                ),
             )
 
-            transportation_cost = (
-                demand_pallets
-                * cheapest_lane.cost_per_pallet
-            )
-
-            outbound_allocations.append(
-                OutboundAllocation(
-                    dc_id=cheapest_lane.dc_id,
-                    region_id=region_id,
-                    pallets=demand_pallets,
-                    transportation_cost=transportation_cost,
-                )
-            )
+            region_to_dc[
+                region_id
+            ] = cheapest_lane.dc_id
 
             required_pallets_by_dc[
                 cheapest_lane.dc_id
             ] += demand_pallets
 
         return (
-            outbound_allocations,
+            region_to_dc,
             dict(required_pallets_by_dc),
             unavailable_region_demand,
         )
@@ -151,45 +175,56 @@ class NaivePlanner:
     ) -> tuple[
         list[InboundAllocation],
         dict[str, int],
-        dict[str, int],
     ]:
         """
-        Allocate supplier pallets to DCs using cheapest nominal inbound lanes.
+        Allocate inbound supply using cheapest nominal container lanes.
 
-        Nominal inbound cost per pallet:
+        Nominal cost per pallet:
 
             cost_per_container / pallets_per_container
         """
 
-        active_suppliers = self._active_suppliers()
+        active_suppliers = (
+            self._active_suppliers()
+        )
 
         remaining_supplier_capacity = {
-            supplier_id: supplier.weekly_capacity_pallets
-            for supplier_id, supplier in active_suppliers.items()
+            supplier_id: (
+                supplier.weekly_capacity_pallets
+            )
+            for supplier_id, supplier
+            in active_suppliers.items()
         }
-
-        dc_lookup = {
-            dc.dc_id: dc
-            for dc in self.network.distribution_centers
-        }
-
-        inbound_allocations: list[InboundAllocation] = []
-
-        received_pallets_by_dc: dict[str, int] = defaultdict(int)
-
-        remaining_need_by_dc: dict[str, int] = {}
 
         available_inbound_lanes = (
             self._available_inbound_lanes()
         )
 
-        for dc_id, required_pallets in (
-            required_pallets_by_dc.items()
-        ):
-            dc = dc_lookup[dc_id]
+        inbound_allocations: list[
+            InboundAllocation
+        ] = []
 
-            maximum_receivable = min(
-                required_pallets,
+        received_pallets_by_dc: dict[
+            str,
+            int,
+        ] = defaultdict(int)
+
+        for (
+            dc_id,
+            required_pallets,
+        ) in required_pallets_by_dc.items():
+            dc = self.distribution_centers[
+                dc_id
+            ]
+
+            net_inbound_requirement = max(
+                0,
+                required_pallets
+                - dc.initial_inventory_pallets,
+            )
+
+            remaining_dc_need = min(
+                net_inbound_requirement,
                 dc.receiving_capacity_pallets,
             )
 
@@ -210,23 +245,21 @@ class NaivePlanner:
                 )
             )
 
-            remaining_dc_need = maximum_receivable
-
             for lane in dc_lanes:
                 if remaining_dc_need <= 0:
                     break
 
-                supplier_capacity = (
+                supplier_remaining = (
                     remaining_supplier_capacity[
                         lane.supplier_id
                     ]
                 )
 
-                if supplier_capacity <= 0:
+                if supplier_remaining <= 0:
                     continue
 
                 pallets = min(
-                    supplier_capacity,
+                    supplier_remaining,
                     remaining_dc_need,
                 )
 
@@ -256,7 +289,9 @@ class NaivePlanner:
 
                 inbound_allocations.append(
                     InboundAllocation(
-                        supplier_id=lane.supplier_id,
+                        supplier_id=(
+                            lane.supplier_id
+                        ),
                         dc_id=lane.dc_id,
                         pallets=pallets,
                         containers=containers,
@@ -279,32 +314,141 @@ class NaivePlanner:
 
                 remaining_dc_need -= pallets
 
-            remaining_need_by_dc[
-                dc_id
-            ] = max(
-                0,
-                required_pallets
-                - received_pallets_by_dc[dc_id],
-            )
-
         return (
             inbound_allocations,
             dict(received_pallets_by_dc),
-            remaining_need_by_dc,
+        )
+
+    def _fulfill_customer_demand(
+        self,
+        demand_by_region: dict[str, int],
+        region_to_dc: dict[str, str],
+        unavailable_region_demand: dict[str, int],
+        received_pallets_by_dc: dict[str, int],
+    ) -> tuple[
+        list[OutboundAllocation],
+        dict[str, int],
+        dict[str, int],
+    ]:
+        """
+        Fulfill customer demand from inventory actually available at each DC.
+        """
+
+        available_inventory_by_dc = {
+            dc_id: (
+                dc.initial_inventory_pallets
+                + received_pallets_by_dc.get(
+                    dc_id,
+                    0,
+                )
+            )
+            for dc_id, dc
+            in self.distribution_centers.items()
+        }
+
+        outbound_lane_lookup = {
+            (
+                lane.dc_id,
+                lane.region_id,
+            ): lane
+            for lane in (
+                self._available_outbound_lanes()
+            )
+        }
+
+        outbound_allocations: list[
+            OutboundAllocation
+        ] = []
+
+        unmet_by_region: dict[str, int] = {}
+
+        for (
+            region_id,
+            unavailable_demand,
+        ) in unavailable_region_demand.items():
+            unmet_by_region[
+                region_id
+            ] = unavailable_demand
+
+        for (
+            region_id,
+            demand_pallets,
+        ) in demand_by_region.items():
+            if region_id not in region_to_dc:
+                continue
+
+            dc_id = region_to_dc[
+                region_id
+            ]
+
+            available_inventory = (
+                available_inventory_by_dc[
+                    dc_id
+                ]
+            )
+
+            fulfilled_pallets = min(
+                demand_pallets,
+                available_inventory,
+            )
+
+            unmet_pallets = (
+                demand_pallets
+                - fulfilled_pallets
+            )
+
+            lane = outbound_lane_lookup[
+                (
+                    dc_id,
+                    region_id,
+                )
+            ]
+
+            if fulfilled_pallets > 0:
+                transportation_cost = (
+                    fulfilled_pallets
+                    * lane.cost_per_pallet
+                )
+
+                outbound_allocations.append(
+                    OutboundAllocation(
+                        dc_id=dc_id,
+                        region_id=region_id,
+                        pallets=fulfilled_pallets,
+                        transportation_cost=(
+                            transportation_cost
+                        ),
+                    )
+                )
+
+            available_inventory_by_dc[
+                dc_id
+            ] -= fulfilled_pallets
+
+            unmet_by_region[
+                region_id
+            ] = unmet_pallets
+
+        return (
+            outbound_allocations,
+            unmet_by_region,
+            available_inventory_by_dc,
         )
 
     def plan(
         self,
         week: int = 1,
     ) -> PlanningResult:
-        """Generate the naive baseline plan for a given week."""
+        """Generate the complete naive baseline plan."""
 
-        demand_by_region = self._get_week_demand(
-            week
+        demand_by_region = (
+            self._get_week_demand(
+                week
+            )
         )
 
         (
-            outbound_allocations,
+            region_to_dc,
             required_pallets_by_dc,
             unavailable_region_demand,
         ) = self._assign_regions_to_cheapest_dcs(
@@ -313,136 +457,96 @@ class NaivePlanner:
 
         (
             inbound_allocations,
-            _received_pallets_by_dc,
-            remaining_need_by_dc,
+            received_pallets_by_dc,
         ) = self._allocate_inbound(
             required_pallets_by_dc
         )
 
-        dc_lookup = {
-            dc.dc_id: dc
-            for dc in self.network.distribution_centers
-        }
+        (
+            outbound_allocations,
+            unmet_by_region,
+            ending_inventory_by_dc,
+        ) = self._fulfill_customer_demand(
+            demand_by_region=(
+                demand_by_region
+            ),
+            region_to_dc=(
+                region_to_dc
+            ),
+            unavailable_region_demand=(
+                unavailable_region_demand
+            ),
+            received_pallets_by_dc=(
+                received_pallets_by_dc
+            ),
+        )
 
-        region_lookup = {
-            region.region_id: region
-            for region in self.network.customer_regions
-        }
+        # ---------------------------
+        # COST CALCULATION
+        # ---------------------------
 
         inbound_transportation_cost = sum(
             allocation.transportation_cost
-            for allocation in inbound_allocations
+            for allocation
+            in inbound_allocations
         )
 
         outbound_transportation_cost = sum(
             allocation.transportation_cost
-            for allocation in outbound_allocations
+            for allocation
+            in outbound_allocations
         )
 
         handling_cost = sum(
             allocation.pallets
-            * dc_lookup[
+            * self.distribution_centers[
                 allocation.dc_id
             ].handling_cost_per_pallet
-            for allocation in inbound_allocations
+            for allocation
+            in inbound_allocations
         )
 
-        total_demand = sum(
-            demand_by_region.values()
+        holding_cost = sum(
+            inventory
+            * self.distribution_centers[
+                dc_id
+            ].holding_cost_per_pallet
+            for dc_id, inventory
+            in ending_inventory_by_dc.items()
         )
 
-        unmet_due_to_inbound = sum(
-            remaining_need_by_dc.values()
-        )
-
-        unmet_due_to_outbound = sum(
-            unavailable_region_demand.values()
-        )
-
-        unmet_demand = (
-            unmet_due_to_inbound
-            + unmet_due_to_outbound
-        )
-
-        fulfilled_demand = max(
-            0,
-            total_demand - unmet_demand,
-        )
-
-        shortage_cost = 0.0
-
-        # Shortage caused because a DC could not receive
-        # enough inbound pallets.
-        for allocation in outbound_allocations:
-            dc_shortage = remaining_need_by_dc.get(
-                allocation.dc_id,
-                0,
-            )
-
-            if dc_shortage <= 0:
-                continue
-
-            dc_required = required_pallets_by_dc.get(
-                allocation.dc_id,
-                0,
-            )
-
-            if dc_required <= 0:
-                continue
-
-            shortage_share = (
-                allocation.pallets
-                / dc_required
-            )
-
-            regional_shortage = round(
-                shortage_share
-                * dc_shortage
-            )
-
-            shortage_cost += (
-                regional_shortage
-                * region_lookup[
-                    allocation.region_id
-                ].shortage_penalty_per_pallet
-            )
-
-        # Shortage caused because there was no available
-        # DC-to-region lane at all.
-        for (
-            region_id,
-            unavailable_demand,
-        ) in unavailable_region_demand.items():
-            shortage_cost += (
-                unavailable_demand
-                * region_lookup[
-                    region_id
-                ].shortage_penalty_per_pallet
-            )
-
-        total_containers = sum(
-            allocation.containers
-            for allocation in inbound_allocations
-        )
-
-        weighted_container_utilization = sum(
-            allocation.container_utilization
-            * allocation.containers
-            for allocation in inbound_allocations
-        )
-
-        average_container_utilization = (
-            weighted_container_utilization
-            / total_containers
-            if total_containers > 0
-            else 0.0
+        shortage_cost = sum(
+            unmet_pallets
+            * self.customer_regions[
+                region_id
+            ].shortage_penalty_per_pallet
+            for region_id, unmet_pallets
+            in unmet_by_region.items()
         )
 
         total_cost = (
             inbound_transportation_cost
             + outbound_transportation_cost
             + handling_cost
+            + holding_cost
             + shortage_cost
+        )
+
+        # ---------------------------
+        # SERVICE METRICS
+        # ---------------------------
+
+        total_demand = sum(
+            demand_by_region.values()
+        )
+
+        unmet_demand = sum(
+            unmet_by_region.values()
+        )
+
+        fulfilled_demand = (
+            total_demand
+            - unmet_demand
         )
 
         fulfillment_rate = (
@@ -452,26 +556,89 @@ class NaivePlanner:
             else 0.0
         )
 
+        # ---------------------------
+        # CONTAINER UTILIZATION
+        # ---------------------------
+
+        total_booked_capacity = 0
+        total_inbound_pallets = 0
+
+        inbound_lane_lookup = {
+            (
+                lane.supplier_id,
+                lane.dc_id,
+            ): lane
+            for lane in self.network.inbound_lanes
+        }
+
+        for allocation in inbound_allocations:
+            lane = inbound_lane_lookup[
+                (
+                    allocation.supplier_id,
+                    allocation.dc_id,
+                )
+            ]
+
+            total_booked_capacity += (
+                allocation.containers
+                * lane.pallets_per_container
+            )
+
+            total_inbound_pallets += (
+                allocation.pallets
+            )
+
+        average_container_utilization = (
+            total_inbound_pallets
+            / total_booked_capacity
+            if total_booked_capacity > 0
+            else 0.0
+        )
+
         return PlanningResult(
             planning_method="naive",
             week=week,
-            inbound_allocations=inbound_allocations,
-            outbound_allocations=outbound_allocations,
+
+            inbound_allocations=(
+                inbound_allocations
+            ),
+
+            outbound_allocations=(
+                outbound_allocations
+            ),
+
             inbound_transportation_cost=(
                 inbound_transportation_cost
             ),
+
             outbound_transportation_cost=(
                 outbound_transportation_cost
             ),
+
             handling_cost=handling_cost,
+
+            holding_cost=holding_cost,
+
             shortage_cost=shortage_cost,
+
             total_cost=total_cost,
-            total_demand_pallets=total_demand,
+
+            total_demand_pallets=(
+                total_demand
+            ),
+
             fulfilled_demand_pallets=(
                 fulfilled_demand
             ),
-            unmet_demand_pallets=unmet_demand,
-            fulfillment_rate=fulfillment_rate,
+
+            unmet_demand_pallets=(
+                unmet_demand
+            ),
+
+            fulfillment_rate=(
+                fulfillment_rate
+            ),
+
             average_container_utilization=(
                 average_container_utilization
             ),
