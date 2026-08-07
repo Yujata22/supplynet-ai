@@ -2,21 +2,22 @@
 
 **SupplyNet AI** is an end-to-end supply network planning, optimization, and disruption-analysis platform.
 
-It combines a rule-based planning baseline, deterministic mixed-integer optimization, scenario simulation, and an agentic natural-language interface to answer questions such as:
+It combines:
 
-> "Increase West demand by 20% in week 1."
+- a rule-based planning baseline,
+- deterministic mixed-integer optimization,
+- scenario simulation,
+- and an agentic natural-language interface.
 
-> "Reduce Dallas capacity by 30%."
+The core design principle is simple:
 
-> "SUP_001 supplier outage in week 1."
+> **The agent interprets and orchestrates; the optimizer decides quantities, routing, and cost.**
 
-Instead of allowing an AI agent to directly decide shipment quantities, SupplyNet AI separates **natural-language interpretation** from **mathematical optimization**.
-
-The agent interprets and orchestrates the scenario, while an **OR-Tools MILP optimizer** remains the source of truth for routing, container bookings, shipment quantities, fulfillment, and network cost.
+Rather than allowing an AI agent to directly make numerical supply-planning decisions, SupplyNet AI keeps natural-language interpretation separate from deterministic mathematical optimization.
 
 ---
 
-## Project Highlights
+# Project Highlights
 
 The synthetic supply network currently models:
 
@@ -40,13 +41,80 @@ For the Week 1 baseline scenario:
 | Unmet Demand | 0 pallets | 0 pallets |
 | Container Utilization | ~97.36% | ~99.88% |
 
-### Result
+## Key Result
 
-**~7.83% reduction in total network cost while maintaining 100% customer fulfillment.**
+**~7.83% reduction in modeled total network cost while maintaining 100% customer fulfillment.**
 
-The optimization also increased container utilization by approximately **2.53 percentage points**.
+The optimization also improved container utilization by approximately **2.53 percentage points**.
 
-> These results are generated from synthetic portfolio data and should be interpreted as a demonstration of the architecture and optimization approach rather than production business results.
+> These results are generated from synthetic portfolio data and are intended to demonstrate the architecture and optimization approach rather than represent production business results.
+
+---
+
+# Application Demo
+
+SupplyNet AI provides an interactive Streamlit interface for comparing rule-based and optimized supply-network plans and analyzing operational disruptions.
+
+The Week 1 baseline optimization reduces modeled network cost from approximately **$1.122M to $1.034M (7.83%)**, while maintaining **100% customer fulfillment** and improving container utilization from **97.36% to 99.88%**.
+
+## Agentic Scenario Analysis
+
+The AI Scenario Analyst accepts an operational disruption in natural language, converts it into a validated scenario, reruns the deterministic OR-Tools optimization model, and evaluates the resulting financial and service impact.
+
+### Scenario 1 — West Demand Surge
+
+**Input**
+
+> Increase West demand by 20% in week 1
+
+<p align="center">
+  <img
+    src="assets/supplynet-ai-demand-surge.png"
+    alt="SupplyNet AI West Demand Surge Scenario"
+    width="90%"
+  />
+</p>
+
+The scenario is parsed into a structured `demand_surge` request targeting `REG_WEST`.
+
+The optimized network responds by rerouting supply while maintaining **100% fulfillment**:
+
+- Baseline optimized cost: **$1,033,747**
+- Scenario optimized cost: **$1,078,549**
+- Cost impact: **+$44,802**
+- Cost increase: **4.33%**
+- Scenario fulfillment: **100%**
+- Unmet demand: **0 pallets**
+
+This demonstrates how the network can absorb increased demand while quantifying the additional cost required to preserve service.
+
+---
+
+### Scenario 2 — Dallas DC Capacity Reduction
+
+**Input**
+
+> Reduce Dallas capacity by 30% in week 1
+
+<p align="center">
+  <img
+    src="assets/supplynet-ai-dallas-capacity.png"
+    alt="SupplyNet AI Dallas Capacity Reduction Scenario"
+    width="90%"
+  />
+</p>
+
+The scenario is interpreted as a `dc_capacity_reduction` affecting `DC_DAL`.
+
+For this modeled network, the optimizer absorbs the disruption without changing total network cost or customer service:
+
+- Baseline optimized cost: **$1,033,747**
+- Scenario optimized cost: **$1,033,747**
+- Cost impact: **$0**
+- Scenario fulfillment: **100%**
+- Unmet demand: **0 pallets**
+
+This illustrates an important property of scenario analysis: not every disruption creates a financial or service impact when sufficient alternative capacity exists elsewhere in the network.
 
 ---
 
@@ -66,17 +134,27 @@ SupplyNet AI is organized as a layered decision-support system covering data ing
 
 ### 1. Data Layer
 
-The project uses synthetic CSV datasets representing the supply network:
+The project uses synthetic CSV datasets representing:
 
-- `suppliers.csv`
-- `distribution_centers.csv`
-- `customer_regions.csv`
-- `inbound_lanes.csv`
-- `outbound_lanes.csv`
-- `demand.csv`
-- `initial_inventory.csv`
+- suppliers,
+- distribution centers,
+- customer regions,
+- inbound transportation lanes,
+- outbound transportation lanes,
+- demand,
+- and initial inventory.
 
-The generated network contains supplier capacity, DC capacity, demand, inventory, geographic information, transportation cost, container capacity, lead time, reliability, and lane availability.
+The generated network includes:
+
+- supplier capacity,
+- DC receiving and storage capacity,
+- demand,
+- geographic information,
+- transportation cost,
+- container capacity,
+- lead time,
+- reliability,
+- and lane availability.
 
 ---
 
@@ -97,7 +175,7 @@ Core models include:
 - `ScenarioRequest`
 - `AgentResponse`
 
-Referential-integrity checks help ensure that lane, supplier, DC, region, and demand identifiers remain consistent before optimization begins.
+Referential-integrity checks ensure that lane, supplier, DC, region, and demand identifiers remain consistent before optimization begins.
 
 ---
 
@@ -172,8 +250,6 @@ u[r] = unmet demand in customer region r
 
 ## Constraints
 
-The optimization currently enforces:
-
 ### Supplier Capacity
 
 ```text
@@ -234,17 +310,17 @@ Unavailable inbound and outbound transportation lanes are forced to zero flow.
 
 It calculates:
 
-- total cost;
-- inbound transportation cost;
-- outbound transportation cost;
-- handling cost;
-- inventory holding cost;
-- shortage cost;
-- customer fulfillment;
-- unmet demand;
-- container utilization;
-- absolute savings;
-- percentage savings.
+- total cost,
+- inbound transportation cost,
+- outbound transportation cost,
+- handling cost,
+- inventory holding cost,
+- shortage cost,
+- customer fulfillment,
+- unmet demand,
+- container utilization,
+- absolute savings,
+- and percentage savings.
 
 For Week 1, the optimized solution currently produces approximately:
 
@@ -270,12 +346,12 @@ SupplyNet AI can mutate a copy of the original network and rerun optimization wi
 
 Supported disruption types include:
 
-- demand surge;
-- supplier outage;
-- supplier capacity reduction;
-- DC capacity reduction;
-- inbound transportation-cost increase;
-- inbound lane disruption;
+- demand surge,
+- supplier outage,
+- supplier capacity reduction,
+- DC capacity reduction,
+- inbound transportation-cost increase,
+- inbound lane disruption,
 - outbound lane disruption.
 
 Examples:
@@ -295,17 +371,17 @@ SUP_001 supplier outage in week 1
 The `ScenarioEvaluationService` compares:
 
 ```text
-Baseline optimized network
+Baseline Optimized Network
         vs
-Disrupted optimized network
+Disrupted Optimized Network
 ```
 
 and returns changes in:
 
-- total cost;
-- cost percentage;
-- fulfillment;
-- unmet demand.
+- total cost,
+- cost percentage,
+- fulfillment,
+- and unmet demand.
 
 ---
 
@@ -356,31 +432,29 @@ is converted into structured parameters similar to:
 
 The scenario is then validated, applied to a copied network, and passed back through the optimization engine.
 
-## Important Design Principle
+## Design Principle
 
 The agent does **not** calculate shipment quantities itself.
 
-Instead:
-
 ### Agent responsibilities
 
-- interpret operational intent;
-- extract scenario parameters;
-- validate the scenario;
-- orchestrate the workflow;
-- compare business impact;
+- interpret operational intent,
+- extract scenario parameters,
+- validate the scenario,
+- orchestrate the workflow,
+- compare business impact,
 - generate recommendations.
 
 ### Optimizer responsibilities
 
-- determine supplier allocations;
-- determine DC routing;
-- book containers;
-- calculate shipment quantities;
-- satisfy constraints;
+- determine supplier allocations,
+- determine DC routing,
+- book containers,
+- calculate shipment quantities,
+- satisfy operational constraints,
 - minimize network cost.
 
-This architecture keeps numerical supply-planning decisions deterministic and auditable.
+This architecture keeps numerical planning decisions deterministic and auditable.
 
 ---
 
@@ -428,20 +502,20 @@ The Streamlit application provides an interactive business-facing interface.
 
 The dashboard includes:
 
-- network overview;
-- planning-week selector;
-- naive vs optimized cost comparison;
-- cost savings;
-- solver status;
-- customer fulfillment;
-- unmet demand;
-- container utilization;
-- cost-component analysis;
-- inbound allocations;
-- outbound allocations;
-- ending inventory;
-- AI scenario analyst;
-- business recommendations.
+- network overview,
+- planning-week selector,
+- naive vs optimized cost comparison,
+- cost savings,
+- solver status,
+- customer fulfillment,
+- unmet demand,
+- container utilization,
+- cost-component analysis,
+- optimized inbound allocations,
+- optimized outbound allocations,
+- ending inventory,
+- AI scenario analyst,
+- and business recommendations.
 
 The dashboard runs at:
 
@@ -481,7 +555,7 @@ when launched locally.
 
 - Pytest
 
-## Engineering / Packaging
+## Engineering & Packaging
 
 - Git
 - GitHub
@@ -496,7 +570,6 @@ when launched locally.
 supplynet-ai/
 │
 ├── app/
-│   │
 │   ├── main.py
 │   │
 │   ├── models/
@@ -521,7 +594,9 @@ supplynet-ai/
 │       └── agent_service.py
 │
 ├── assets/
-│   └── supplynet-ai-architecture.png
+│   ├── supplynet-ai-architecture.png
+│   ├── supplynet-ai-demand-surge.png
+│   └── supplynet-ai-dallas-capacity.png
 │
 ├── data/
 │   ├── suppliers.csv
@@ -569,7 +644,7 @@ git clone <YOUR_REPOSITORY_URL>
 cd supplynet-ai
 ```
 
-Replace `<YOUR_REPOSITORY_URL>` with your GitHub repository URL.
+Replace `<YOUR_REPOSITORY_URL>` with the actual GitHub repository URL.
 
 ---
 
@@ -601,7 +676,7 @@ pip install -r requirements.txt
 pytest -q
 ```
 
-The current test suite contains **27 passing tests** covering the core planning and agent workflows.
+The current test suite contains **27 passing tests** covering the core planning, optimization, and agent workflows.
 
 ---
 
@@ -649,45 +724,45 @@ The automated test suite covers several levels of the application.
 
 Tests verify:
 
-- expected entity counts;
-- identifier uniqueness;
-- lane references;
-- supplier/DC/region references;
-- capacity consistency;
+- expected entity counts,
+- identifier uniqueness,
+- lane references,
+- supplier/DC/region references,
+- capacity consistency,
 - sufficient network supply.
 
 ## Rule-Based Planner
 
 Tests verify:
 
-- planning execution;
-- service metrics;
-- container utilization;
-- supplier capacity;
-- container capacity;
+- planning execution,
+- service metrics,
+- container utilization,
+- supplier capacity,
+- container capacity,
 - lane availability.
 
 ## Optimization Model
 
 Tests verify:
 
-- successful solver execution;
-- supplier capacity;
-- container capacity;
-- DC receiving capacity;
-- DC flow balance;
-- demand balance;
+- successful solver execution,
+- supplier capacity,
+- container capacity,
+- DC receiving capacity,
+- DC flow balance,
+- demand balance,
 - unavailable-lane enforcement.
 
 ## Agentic Workflow
 
 Tests verify:
 
-- demand-surge parsing;
-- DC-capacity parsing;
-- supplier-outage parsing;
-- invalid-input rejection;
-- successful agent execution;
+- demand-surge parsing,
+- DC-capacity parsing,
+- supplier-outage parsing,
+- invalid-input rejection,
+- successful agent execution,
 - preservation of the original base network.
 
 ---
@@ -725,59 +800,59 @@ Initial inventory is included in the DC flow balance for the selected week, but 
 
 Potential extensions include:
 
-### Multi-Period Optimization
+## Multi-Period Optimization
 
 Carry ending inventory from one period into the next and optimize several weeks jointly.
 
-### Lead-Time-Aware Planning
+## Lead-Time-Aware Planning
 
 Include transportation lead times directly in network decisions.
 
-### Safety Stock
+## Safety Stock
 
 Introduce minimum safety-stock requirements by DC.
 
-### Supplier Reliability
+## Supplier Reliability
 
 Incorporate reliability scores directly into the optimization objective or constraints.
 
-### Multi-Objective Optimization
+## Multi-Objective Optimization
 
 Optimize combinations of:
 
-- cost;
-- fulfillment;
-- transportation emissions;
-- supplier risk;
+- cost,
+- fulfillment,
+- transportation emissions,
+- supplier risk,
 - inventory exposure.
 
-### Stochastic Optimization
+## Stochastic Optimization
 
 Model uncertainty in:
 
-- demand;
-- supplier availability;
-- transportation cost;
+- demand,
+- supplier availability,
+- transportation cost,
 - lead time.
 
-### Persistence Layer
+## Persistence Layer
 
 Store scenarios and optimization results in PostgreSQL.
 
-### LLM-Based Structured Extraction
+## LLM-Based Structured Extraction
 
 Replace or complement the deterministic scenario parser with schema-constrained LLM extraction while retaining validation and deterministic optimization.
 
-### Observability
+## Observability
 
 Add:
 
-- structured logging;
-- tracing;
-- solver execution metrics;
+- structured logging,
+- tracing,
+- solver execution metrics,
 - scenario audit trails.
 
-### Authentication & RBAC
+## Authentication & RBAC
 
 Introduce role-based access for planners, analysts, and administrators.
 
@@ -787,19 +862,21 @@ Introduce role-based access for planners, analysts, and administrators.
 
 Supply-network decisions often involve both:
 
-1. **structured mathematical decisions**, such as allocation, capacity, routing, and cost minimization; and
-2. **unstructured operational questions**, such as disruptions, demand changes, or supplier issues.
+1. **structured mathematical decisions** such as allocation, capacity, routing, and cost minimization; and
+2. **unstructured operational questions** such as disruptions, demand changes, or supplier issues.
 
 SupplyNet AI explores an architecture where these responsibilities are deliberately separated:
 
 ```text
-AI / Agent
+Agent
 → Understand intent
 → Orchestrate
+→ Explain
 
 Optimization Engine
 → Calculate decisions
 → Enforce constraints
+→ Minimize cost
 ```
 
 The goal is not to replace deterministic planning with an LLM.
@@ -816,7 +893,7 @@ The reported savings and operational metrics are outputs of the synthetic networ
 
 ---
 
-## Author
+# Author
 
 Built as an end-to-end demonstration of:
 
